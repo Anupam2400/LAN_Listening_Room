@@ -1,0 +1,1431 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Join the room</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0A0E1A;
+      --panel: #11162A;
+      --panel-line: #232A45;
+      --text: #EDEBF7;
+      --text-dim: #8B92B3;
+      --live: #5FE3C0;
+      --pending: #F5A65B;
+      --danger: #E5595F;
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 26px;
+      margin: 0 0 6px 0;
+    }
+
+    .sub {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 34px;
+    }
+
+    .ring {
+      width: 110px;
+      height: 110px;
+      margin: 0 auto 30px auto;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--panel-line);
+      position: relative;
+    }
+
+    .ring.pulsing::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      border: 2px solid var(--pending);
+      animation: ripple 1.8s ease-out infinite;
+    }
+
+    .ring.live {
+      border-color: var(--live);
+    }
+
+    @keyframes ripple {
+      0% {
+        transform: scale(1);
+        opacity: 0.7;
+      }
+
+      100% {
+        transform: scale(1.55);
+        opacity: 0;
+      }
+    }
+
+    input[type=text] {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-family: var(--font-body);
+      font-size: 15px;
+      margin-bottom: 14px;
+    }
+
+    input[type=text]:focus {
+      outline: none;
+      border-color: var(--live);
+    }
+
+    button {
+      width: 100%;
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 15px;
+      border-radius: 10px;
+      border: none;
+      padding: 14px 18px;
+      cursor: pointer;
+      background: var(--live);
+      color: #06231D;
+    }
+
+    .status-text {
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    .video-frame {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--panel-line);
+      background: #060812;
+      margin-top: 6px;
+    }
+
+    #player {
+      width: 100%;
+      height: 100%;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      color: var(--live);
+      margin-top: 16px;
+    }
+
+    .badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--live);
+      box-shadow: 0 0 6px var(--live);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+
+    <div id="screen-name">
+      <h1>Join the room</h1>
+      <div class="sub">Enter a name so the host knows who's asking.</div>
+      <div class="ring"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#8B92B3" stroke-width="1.5">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg></div>
+      <input type="text" id="nameInput" placeholder="Your name" maxlength="30" />
+      <button onclick="requestJoin()">Ask to join</button>
+    </div>
+
+    <div id="screen-waiting" class="hidden">
+      <h1>Hang tight</h1>
+      <div class="sub">Waiting for the host to let you in…</div>
+      <div class="ring pulsing"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F5A65B"
+          stroke-width="1.5">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg></div>
+      <div class="status-text">This page will update automatically.</div>
+    </div>
+
+    <div id="screen-rejected" class="hidden">
+      <h1>Not this time</h1>
+      <div class="sub">The host didn't admit you. You can ask again below.</div>
+      <button onclick="location.reload()">Ask again</button>
+    </div>
+
+    <div id="screen-kicked" class="hidden">
+      <h1>Removed from the room</h1>
+      <div class="sub">The host removed you. You can ask to rejoin anytime.</div>
+      <button onclick="location.reload()">Ask to rejoin</button>
+    </div>
+
+    <div id="screen-banned" class="hidden">
+      <h1>Access closed</h1>
+      <div class="sub">The host isn't accepting requests from this device right now.</div>
+    </div>
+
+    <div id="screen-admitted" class="hidden">
+      <h1 style="font-size:20px;">You're in</h1>
+      <div class="video-frame">
+        <div id="player"></div>
+      </div>
+      <div class="badge"><span class="dot"></span>SYNCED TO HOST</div>
+    </div>
+
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    function show(id) {
+      ['screen-name', 'screen-waiting', 'screen-rejected', 'screen-kicked', 'screen-banned', 'screen-admitted']
+        .forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id));
+    }
+
+    function makeId() {
+      // crypto.randomUUID() requires a secure context (https/localhost) and is
+      // unavailable on plain http://<lan-ip> pages, so generate an ID manually.
+      return 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/x/g, () =>
+        Math.floor(Math.random() * 16).toString(16)
+      );
+    }
+
+    function getToken() {
+      let t = localStorage.getItem('lanroom_token');
+      if (!t) { t = makeId(); localStorage.setItem('lanroom_token', t); }
+      return t;
+    }
+
+    let ws = null;
+    let ytPlayer = null, ytReady = false, suppressEvents = false;
+    let latestSync = null;
+
+    function onYouTubeIframeAPIReady() {
+      ytReady = true;
+      if (latestSync) applySync(latestSync);
+    }
+
+    function requestJoin() {
+      try {
+        const name = document.getElementById('nameInput').value.trim() || 'Guest';
+        localStorage.setItem('lanroom_name', name);
+        connect(name);
+        show('screen-waiting');
+      } catch (err) {
+        alert("Something went wrong joining: " + err.message);
+        console.error(err);
+      }
+    }
+
+    function connect(name) {
+      const token = getToken();
+      const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${wsProto}://${location.host}/ws/guest?token=${encodeURIComponent(token)}&name=${encodeURIComponent(name)}`);
+
+      ws.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === 'pending') show('screen-waiting');
+        else if (msg.type === 'admitted') { show('screen-admitted'); }
+        else if (msg.type === 'rejected') show('screen-rejected');
+        else if (msg.type === 'kicked') show('screen-kicked');
+        else if (msg.type === 'banned') show('screen-banned');
+        else if (msg.type === 'sync') { latestSync = msg; applySync(msg); }
+      };
+      ws.onclose = () => { };
+    }
+
+    function applySync(msg) {
+      if (!msg.videoId || !ytReady) return;
+      if (!ytPlayer) {
+        ytPlayer = new YT.Player('player', {
+          height: '100%', width: '100%',
+          videoId: msg.videoId,
+          playerVars: { rel: 0, modestbranding: 1, start: Math.floor(msg.position || 0) },
+          events: {
+            onReady: () => { if (!msg.isPlaying) ytPlayer.pauseVideo(); },
+            onError: (e) => {
+              const messages = {
+                2: "The host's video link looks invalid.",
+                5: "This video can't play in an embedded player.",
+                100: "This video was removed or is private.",
+                101: "The video owner has disabled playback on other sites.",
+                150: "The video owner has disabled playback on other sites.",
+              };
+              document.querySelector('.badge').textContent = messages[e.data] || "This video can't be played here.";
+            }
+          }
+        });
+        return;
+      }
+      suppressEvents = true;
+      const current = ytPlayer.getVideoData ? ytPlayer.getVideoData().video_id : null;
+      if (current !== msg.videoId) {
+        ytPlayer.loadVideoById(msg.videoId, msg.position);
+        if (!msg.isPlaying) setTimeout(() => ytPlayer.pauseVideo(), 400);
+      } else {
+        const drift = Math.abs(ytPlayer.getCurrentTime() - msg.position);
+        if (drift > 1.5) ytPlayer.seekTo(msg.position, true);
+        if (msg.isPlaying) ytPlayer.playVideo(); else ytPlayer.pauseVideo();
+      }
+      setTimeout(() => { suppressEvents = false; }, 500);
+    }
+
+    // Auto-fill remembered name
+    window.addEventListener('load', () => {
+      const savedName = localStorage.getItem('lanroom_name');
+      if (savedName) document.getElementById('nameInput').value = savedName;
+    });
+  </script>
+</body>
+
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Join the room</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0A0E1A;
+      --panel: #11162A;
+      --panel-line: #232A45;
+      --text: #EDEBF7;
+      --text-dim: #8B92B3;
+      --live: #5FE3C0;
+      --pending: #F5A65B;
+      --danger: #E5595F;
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+    }
+
+    .pre-admission {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 540px;
+      text-align: center;
+    }
+
+    .card h1 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 26px;
+      margin: 0 0 6px;
+    }
+
+    .card .sub {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    .ring {
+      width: 110px;
+      height: 110px;
+      margin: 0 auto 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--panel-line);
+      position: relative;
+    }
+
+    .ring.pulsing::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      border: 2px solid var(--pending);
+      animation: ripple 1.8s ease-out infinite;
+    }
+
+    @keyframes ripple {
+      0% {
+        transform: scale(1);
+        opacity: 0.7;
+      }
+
+      100% {
+        transform: scale(1.55);
+        opacity: 0;
+      }
+    }
+
+    .card input[type=text] {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-size: 15px;
+      margin-bottom: 12px;
+    }
+
+    .card input:focus {
+      outline: none;
+      border-color: var(--live);
+    }
+
+    .card button {
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 15px;
+      border-radius: 10px;
+      border: none;
+      padding: 14px 18px;
+      cursor: pointer;
+      background: var(--live);
+      color: #06231D;
+      width: 100%;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .admitted-wrapper {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 16px 24px;
+    }
+
+    .admitted-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      margin-bottom: 12px;
+    }
+
+    .admitted-header h1 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 20px;
+      margin: 0;
+    }
+
+    .role-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      color: var(--text-dim);
+    }
+
+    .role-badge.cohost {
+      border-color: var(--live);
+      color: var(--live);
+    }
+
+    .admitted-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 20px;
+      min-height: 0;
+    }
+
+    @media (max-width: 800px) {
+      .admitted-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+    }
+
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .now-playing-bar {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .now-playing-bar .np-icon {
+      font-size: 20px;
+    }
+
+    .now-playing-bar .np-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .now-playing-bar .np-title {
+      font-weight: 500;
+      font-size: 15px;
+    }
+
+    .now-playing-bar .np-source {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .video-frame {
+      flex: 1;
+      min-height: 0;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--panel-line);
+      background: #060812;
+      position: relative;
+    }
+
+    #player {
+      width: 100%;
+      height: 100%;
+    }
+
+    .audio-fallback {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      background: #060812;
+      color: var(--text-dim);
+      gap: 10px;
+      padding: 20px;
+    }
+
+    .audio-fallback .big-icon {
+      font-size: 64px;
+      opacity: 0.6;
+    }
+
+    .audio-fallback audio {
+      width: 90%;
+      max-width: 400px;
+    }
+
+    .transport {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .transport button {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .transport button:hover {
+      border-color: var(--live);
+    }
+
+    .transport button:disabled {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    .right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .queue-panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      max-height: 35%;
+    }
+
+    .queue-panel .q-header {
+      font-weight: 500;
+      font-size: 14px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .queue-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .queue-item {
+      background: var(--bg);
+      border: 1px solid var(--panel-line);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .queue-item .q-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .queue-item .q-source {
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+
+    .chat-box {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .chat-box .chat-header {
+      font-weight: 500;
+      font-size: 14px;
+      margin-bottom: 4px;
+      flex-shrink: 0;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 6px;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .chat-messages .msg {
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+    }
+
+    .chat-messages .msg .sender {
+      font-weight: 600;
+      color: var(--live);
+      white-space: nowrap;
+    }
+
+    .chat-messages .msg .sender.host {
+      color: #F5A65B;
+    }
+
+    .chat-messages .msg .text {
+      word-break: break-word;
+    }
+
+    .chat-input {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .chat-input input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .chat-input input:focus {
+      outline: none;
+      border-color: var(--live);
+    }
+
+    .chat-input button {
+      background: var(--live);
+      color: #06231D;
+      border: none;
+      padding: 0 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      width: auto;
+    }
+
+    .chat-password-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+
+    .chat-password-row input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .chat-password-row button {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .chat-password-row button:hover {
+      border-color: var(--live);
+    }
+
+    .recommend-area {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .recommend-area input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .recommend-area input:focus {
+      outline: none;
+      border-color: var(--live);
+    }
+
+    .recommend-area button {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      width: auto;
+      font-size: 13px;
+    }
+
+    .recommend-area button:hover {
+      border-color: var(--live);
+    }
+
+    .cohost-queue-add {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+      margin-top: 8px;
+    }
+
+    .cohost-queue-add input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .cohost-queue-add input:focus {
+      outline: none;
+      border-color: var(--live);
+    }
+
+    .cohost-queue-add button {
+      background: var(--pending);
+      color: #1a1a2e;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      width: auto;
+      font-size: 13px;
+    }
+
+    .cohost-queue-add button:hover {
+      opacity: 0.8;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--panel);
+      border: 1px solid var(--live);
+      padding: 12px 20px;
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--panel-line);
+      border-radius: 4px;
+    }
+
+    .status-text {
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- PRE‑ADMISSION -->
+  <div id="pre-admission" class="pre-admission">
+    <div id="screen-name" class="card">
+      <h1>Join the room</h1>
+      <div class="sub">Enter a name so the host knows who's asking.</div>
+      <div class="ring"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#8B92B3" stroke-width="1.5">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg></div>
+      <input type="text" id="nameInput" placeholder="Your name" maxlength="30" />
+      <button onclick="requestJoin()">Ask to join</button>
+    </div>
+    <div id="screen-waiting" class="card hidden">
+      <h1>Hang tight</h1>
+      <div class="sub">Waiting for the host to let you in…</div>
+      <div class="ring pulsing"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F5A65B"
+          stroke-width="1.5">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg></div>
+      <div class="status-text">This page will update automatically.</div>
+    </div>
+    <div id="screen-rejected" class="card hidden">
+      <h1>Not this time</h1>
+      <div class="sub">The host didn't admit you. You can ask again below.</div>
+      <button onclick="location.reload()">Ask again</button>
+    </div>
+    <div id="screen-kicked" class="card hidden">
+      <h1>Removed from the room</h1>
+      <div class="sub">The host removed you. You can ask to rejoin anytime.</div>
+      <button onclick="location.reload()">Ask to rejoin</button>
+    </div>
+    <div id="screen-banned" class="card hidden">
+      <h1>Access closed</h1>
+      <div class="sub">The host isn't accepting requests from this device right now.</div>
+    </div>
+  </div>
+
+  <!-- ADMITTED -->
+  <div id="screen-admitted" class="hidden admitted-wrapper">
+    <div class="admitted-header">
+      <h1>You're in</h1>
+      <span id="roleBadge" class="role-badge">guest</span>
+    </div>
+    <div class="admitted-grid">
+      <div class="left-col">
+        <div class="now-playing-bar">
+          <span class="np-icon">🎵</span>
+          <div class="np-info">
+            <span class="np-title" id="npTitle">—</span>
+            <span class="np-source" id="npSource">—</span>
+          </div>
+        </div>
+        <div class="video-frame">
+          <div id="player"></div>
+          <div class="audio-fallback" id="audioFallback">
+            <div class="big-icon">🎵</div>
+            <div id="fallbackTitle" style="font-weight:500;color:var(--text);">Loading audio...</div>
+            <audio id="fallbackAudio" controls></audio>
+          </div>
+        </div>
+        <div class="transport" id="cohostControls" style="display:none;">
+          <button onclick="sendCmd('play')">▶ Play</button>
+          <button onclick="sendCmd('pause')">⏸ Pause</button>
+          <button onclick="sendCmd('next')">⏭ Next</button>
+        </div>
+      </div>
+
+      <div class="right-col">
+        <div class="queue-panel">
+          <div class="q-header"><span>Up next</span><span id="queueCount">0</span></div>
+          <div class="queue-list" id="queueList"></div>
+        </div>
+
+        <div class="chat-box">
+          <div class="chat-header">Chat</div>
+          <div class="chat-password-row">
+            <input type="password" id="chatPassword" placeholder="Chat password (optional)" />
+            <button onclick="setChatPassword()">Set</button>
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input">
+            <input type="text" id="chatInput" placeholder="Message…" />
+            <button onclick="sendChat()">Send</button>
+          </div>
+        </div>
+
+        <div class="recommend-area">
+          <input type="text" id="recUrl" placeholder="YouTube/Spotify link" />
+          <button onclick="sendRecommend()">Recommend</button>
+        </div>
+
+        <div class="cohost-queue-add" id="cohostQueueAdd" style="display:none;">
+          <input type="text" id="cohostQueueInput" placeholder="YouTube/Spotify link to add to queue" />
+          <button onclick="addCohostQueue()">+ Queue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    // ─── Utilities ──────────────────────────────────────────────
+    function makeId() {
+      return 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
+    }
+    function getToken() {
+      let t = localStorage.getItem('lanroom_token');
+      if (!t) { t = makeId(); localStorage.setItem('lanroom_token', t); }
+      return t;
+    }
+
+    function show(id) {
+      const pre = document.getElementById('pre-admission');
+      const admitted = document.getElementById('screen-admitted');
+      if (id === 'screen-admitted') {
+        pre.style.display = 'none';
+        admitted.classList.remove('hidden');
+        document.querySelectorAll('.pre-admission .card').forEach(c => c.classList.add('hidden'));
+      } else {
+        pre.style.display = 'flex';
+        admitted.classList.add('hidden');
+        document.querySelectorAll('.pre-admission .card').forEach(c => c.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+      }
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(t._timeout);
+      t._timeout = setTimeout(() => t.classList.remove('show'), 2000);
+    }
+
+    // ─── State ──────────────────────────────────────────────────
+    let ws = null;
+    let ytPlayer = null, ytReady = false;
+    let suppressEvents = false;
+    let latestSync = null;
+    let myRole = 'guest';
+    let queue = [];
+
+    // Audio fallback
+    let useAudioFallback = false;
+    let fallbackAudio = null;
+    let fallbackVideoId = null;
+    let fallbackPosition = 0;
+    let fallbackPlaying = false;
+
+    // ─── YouTube ────────────────────────────────────────────────
+    function onYouTubeIframeAPIReady() {
+      ytReady = true;
+      ytPlayer = new YT.Player('player', {
+        height: '100%', width: '100%',
+        playerVars: { rel: 0, modestbranding: 1 },
+        events: {
+          onReady: () => { if (latestSync) applySync(latestSync); },
+          onError: onPlayerError
+        }
+      });
+    }
+
+    function onPlayerError(e) {
+      const msgs = {
+        2: "Invalid video ID.", 5: "HTML5 error.",
+        100: "Video removed or private.",
+        101: "Playback disabled on other sites.",
+        150: "Playback disabled on other sites.",
+      };
+      if ((e.data === 101 || e.data === 150) && ytPlayer && ytPlayer.getVideoData) {
+        const videoId = ytPlayer.getVideoData().video_id;
+        if (videoId) {
+          activateAudioFallback(videoId);
+          return;
+        }
+      }
+      document.getElementById('npTitle').textContent = msgs[e.data] || "Cannot play.";
+    }
+
+    // ─── Audio Fallback ──────────────────────────────────────
+    async function activateAudioFallback(videoId) {
+      useAudioFallback = true;
+      fallbackVideoId = videoId;
+      const fallbackDiv = document.getElementById('audioFallback');
+      fallbackDiv.style.display = 'flex';
+      document.getElementById('player').style.display = 'none';
+      document.getElementById('fallbackTitle').textContent = 'Fetching audio stream...';
+
+      try {
+        const response = await fetch(`/api/yt-audio?videoId=${videoId}`);
+        if (!response.ok) throw new Error('Failed to get audio');
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+        const streamUrl = data.streamUrl;
+        const title = data.title || 'Unknown track';
+        document.getElementById('fallbackTitle').textContent = title;
+        document.getElementById('npTitle').textContent = title;
+
+        const audio = document.getElementById('fallbackAudio');
+        audio.src = streamUrl;
+        audio.load();
+        fallbackAudio = audio;
+
+        if (fallbackPosition > 0) audio.currentTime = fallbackPosition;
+        if (fallbackPlaying) audio.play().catch(() => { });
+
+        audio.addEventListener('play', () => {
+          if (!suppressEvents) {
+            ws.send(JSON.stringify({ action: "play", position: audio.currentTime }));
+          }
+        });
+        audio.addEventListener('pause', () => {
+          if (!suppressEvents) {
+            ws.send(JSON.stringify({ action: "pause", position: audio.currentTime }));
+          }
+        });
+        audio.addEventListener('seeked', () => {
+          if (!suppressEvents) {
+            ws.send(JSON.stringify({ action: "seek", position: audio.currentTime }));
+          }
+        });
+      } catch (err) {
+        document.getElementById('fallbackTitle').textContent = 'Fallback failed: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    // ─── Join ───────────────────────────────────────────────────
+    function requestJoin() {
+      const name = document.getElementById('nameInput').value.trim() || 'Guest';
+      localStorage.setItem('lanroom_name', name);
+      connect(name);
+      show('screen-waiting');
+    }
+
+    function connect(name) {
+      const token = getToken();
+      const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${wsProto}://${location.host}/ws/guest?token=${encodeURIComponent(token)}&name=${encodeURIComponent(name)}`);
+
+      ws.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        switch (msg.type) {
+          case 'pending': show('screen-waiting'); break;
+          case 'admitted': show('screen-admitted'); break;
+          case 'rejected': show('screen-rejected'); break;
+          case 'kicked': show('screen-kicked'); break;
+          case 'banned': show('screen-banned'); break;
+
+          case 'sync':
+            latestSync = msg;
+            applySync(msg);
+            break;
+
+          case 'queue_update':
+            queue = msg.queue || [];
+            renderQueue(queue);
+            break;
+
+          case 'chat_message':
+            renderChatMessage(msg);
+            break;
+
+          case 'chat_message_encrypted':
+            renderChatMessage({ sender: msg.sender, data: msg.data, role: msg.role, encrypted: true });
+            break;
+
+          case 'chat_history':
+            const msgs = msg.messages || [];
+            document.getElementById('chatMessages').innerHTML = '';
+            msgs.forEach(m => renderChatMessage(m));
+            break;
+
+          case 'role_update':
+            myRole = msg.role || 'guest';
+            updateRoleUI(myRole);
+            break;
+
+          default:
+            console.log('Unhandled guest message:', msg);
+        }
+      };
+      ws.onclose = () => { };
+    }
+
+    // ─── Sync ───────────────────────────────────────────────────
+    function applySync(msg) {
+      document.getElementById('npTitle').textContent = msg.title || '—';
+      document.getElementById('npSource').textContent = msg.source || '—';
+      if (useAudioFallback && fallbackVideoId === msg.videoId && fallbackAudio) {
+        const audio = fallbackAudio;
+        suppressEvents = true;
+        const drift = Math.abs(audio.currentTime - msg.position);
+        if (drift > 1.5) audio.currentTime = msg.position;
+        if (msg.isPlaying) audio.play().catch(() => { });
+        else audio.pause();
+        setTimeout(() => { suppressEvents = false; }, 500);
+        return;
+      }
+      if (msg.source === 'youtube' && msg.videoId) {
+        if (!ytReady) return;
+        if (!ytPlayer) {
+          ytPlayer = new YT.Player('player', {
+            height: '100%', width: '100%',
+            videoId: msg.videoId,
+            playerVars: { rel: 0, modestbranding: 1, start: Math.floor(msg.position || 0) },
+            events: {
+              onReady: () => { if (!msg.isPlaying) ytPlayer.pauseVideo(); },
+              onError: onPlayerError
+            }
+          });
+          return;
+        }
+        suppressEvents = true;
+        const current = ytPlayer.getVideoData ? ytPlayer.getVideoData().video_id : null;
+        if (current !== msg.videoId) {
+          ytPlayer.loadVideoById(msg.videoId, msg.position);
+          if (!msg.isPlaying) setTimeout(() => ytPlayer.pauseVideo(), 400);
+        } else {
+          const drift = Math.abs(ytPlayer.getCurrentTime() - msg.position);
+          if (drift > 1.5) ytPlayer.seekTo(msg.position, true);
+          if (msg.isPlaying) ytPlayer.playVideo(); else ytPlayer.pauseVideo();
+        }
+        setTimeout(() => { suppressEvents = false; }, 500);
+      }
+    }
+
+    // ─── Chat Encryption ─────────────────────────────────────
+    function str2ab(str) { return new TextEncoder().encode(str); }
+    function ab2str(buf) { return new TextDecoder().decode(buf); }
+
+    async function getKey(password) {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: enc.encode('lanroom-salt'), iterations: 100000, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+    }
+
+    async function encryptMessage(plaintext, password) {
+      const key = await getKey(password);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        str2ab(plaintext)
+      );
+      const combined = new Uint8Array(iv.length + encrypted.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(encrypted), iv.length);
+      return btoa(String.fromCharCode(...combined));
+    }
+
+    async function decryptMessage(encoded, password) {
+      try {
+        const combined = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+        const iv = combined.slice(0, 12);
+        const ciphertext = combined.slice(12);
+        const key = await getKey(password);
+        const decrypted = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: iv },
+          key,
+          ciphertext
+        );
+        return ab2str(decrypted);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function setChatPassword() {
+      const pwd = document.getElementById('chatPassword').value;
+      localStorage.setItem('chat_password', pwd);
+    }
+
+    // ─── Chat send/receive ───────────────────────────────────
+    async function sendChat() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      const password = localStorage.getItem('chat_password');
+      if (password) {
+        const encrypted = await encryptMessage(text, password);
+        ws.send(JSON.stringify({ action: "chat_send_encrypted", data: encrypted }));
+      } else {
+        ws.send(JSON.stringify({ action: "chat_send", text }));
+      }
+      input.value = '';
+    }
+    document.getElementById('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+    async function renderChatMessage(msg) {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'msg';
+      const senderClass = msg.role === 'host' ? 'host' : '';
+      let displayText = msg.text;
+      if (msg.encrypted) {
+        const password = localStorage.getItem('chat_password');
+        if (password) {
+          const plaintext = await decryptMessage(msg.data, password);
+          displayText = plaintext !== null ? plaintext : '[encrypted – wrong password?]';
+        } else {
+          displayText = '[encrypted – set password to view]';
+        }
+      }
+      div.innerHTML = `<span class="sender ${senderClass}">${escHtml(msg.sender)}</span>
+      <span class="text">${escHtml(displayText)}</span>`;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // ─── Queue ──────────────────────────────────────────────────
+    function renderQueue(queue) {
+      const container = document.getElementById('queueList');
+      const count = document.getElementById('queueCount');
+      count.textContent = queue.length;
+      if (!queue.length) {
+        container.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:4px 0;">Queue is empty</div>`;
+        return;
+      }
+      let html = '';
+      queue.forEach(item => {
+        const sourceIcon = { youtube: 'YT', spotify: 'SP', local: '📁' }[item.source] || '?';
+        html += `<div class="queue-item">
+        <span class="q-title">${escHtml(item.title)}</span>
+        <span class="q-source">${sourceIcon} · by ${escHtml(item.addedBy || 'Host')}</span>
+      </div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    // ─── Recommend ──────────────────────────────────────────────
+    function sendRecommend() {
+      const input = document.getElementById('recUrl');
+      const url = input.value.trim();
+      if (!url) { alert('Please paste a YouTube or Spotify link.'); return; }
+      let source = 'youtube';
+      let title = 'Recommended track';
+      if (url.includes('spotify')) source = 'spotify';
+      ws.send(JSON.stringify({ action: "recommend", source, url, title }));
+      input.value = '';
+    }
+
+    // ─── Co‑host queue add ────────────────────────────────────
+    function addCohostQueue() {
+      const input = document.getElementById('cohostQueueInput');
+      const url = input.value.trim();
+      if (!url) { alert('Please paste a YouTube or Spotify link.'); return; }
+      let source = 'youtube';
+      if (url.includes('spotify')) source = 'spotify';
+      let id = url;
+      if (source === 'youtube') {
+        const match = url.match(/(?:v=|\/shorts\/|\/embed\/|\/live\/|youtu\.be\/)([\w-]{11})/);
+        if (match) id = match[1];
+      }
+      ws.send(JSON.stringify({ action: "queue_add", source: source, url: id, title: "Added by co-host" }));
+      showToast("Added to queue");
+      input.value = '';
+    }
+
+    // ─── Co‑host controls ──────────────────────────────────────
+    function sendCmd(action) {
+      if (action === 'next') {
+        ws.send(JSON.stringify({ action: "queue_next" }));
+        return;
+      }
+      if (useAudioFallback && fallbackAudio) {
+        const pos = fallbackAudio.currentTime || 0;
+        ws.send(JSON.stringify({ action: action, position: pos }));
+        if (action === 'play') fallbackAudio.play().catch(() => { });
+        else if (action === 'pause') fallbackAudio.pause();
+        return;
+      }
+      if (!ytReady || !ytPlayer.getCurrentTime) return;
+      const pos = ytPlayer.getCurrentTime();
+      ws.send(JSON.stringify({ action: action, position: pos }));
+    }
+
+    function updateRoleUI(role) {
+      const badge = document.getElementById('roleBadge');
+      badge.textContent = role;
+      badge.className = 'role-badge' + (role === 'cohost' ? ' cohost' : '');
+      const controls = document.getElementById('cohostControls');
+      controls.style.display = (role === 'cohost') ? 'flex' : 'none';
+      const cohostAdd = document.getElementById('cohostQueueAdd');
+      cohostAdd.style.display = (role === 'cohost') ? 'flex' : 'none';
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────
+    function escHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // ─── Init ────────────────────────────────────────────────────
+    window.addEventListener('load', () => {
+      const savedName = localStorage.getItem('lanroom_name');
+      if (savedName) document.getElementById('nameInput').value = savedName;
+      const savedPwd = localStorage.getItem('chat_password');
+      if (savedPwd) document.getElementById('chatPassword').value = savedPwd;
+      fallbackAudio = document.getElementById('fallbackAudio');
+    });
+  </script>
+</body>
+
+</html>
