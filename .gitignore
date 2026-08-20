@@ -1,0 +1,45 @@
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual environments ──────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── SSL / TLS certificates (NEVER commit these) ───────────
+*.pem
+*.key
+*.crt
+*.csr
+*.pfx
+
+# ── Uploaded user files ───────────────────────────────────
+uploads/*
+!uploads/.gitkeep
+
+# ── IDE / editor ──────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS artefacts ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs & tmp ───────────────────────────────────────────
+*.log
+*.tmp
+
+# ── Antigravity / dev artefacts ──────────────────────────
+implementation_plan.md

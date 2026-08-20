@@ -1187,6 +1187,108 @@
       background: var(--panel-line);
       border-radius: 4px;
     }
+
+    /* ── Emoji Picker ── */
+    .emoji-picker {
+      position: fixed;          /* fixed so overflow:auto on parent columns never clips it */
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 12px;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 4px;
+      z-index: 9999;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+      width: 300px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .emoji-picker.hidden { display: none; }
+    .emoji-btn-item {
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      text-align: center;
+      transition: background 0.15s;
+      user-select: none;
+    }
+    .emoji-btn-item:hover { background: var(--panel-line); }
+    .emoji-toggle-btn {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      padding: 0 10px;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      width: auto;
+      flex-shrink: 0;
+      transition: border-color 0.2s;
+    }
+    .emoji-toggle-btn:hover { border-color: var(--live); }
+
+    /* ── Mention Dropdown ── */
+    .mention-dropdown {
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 0;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      overflow: hidden;
+      z-index: 101;
+      min-width: 160px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    .mention-dropdown.hidden { display: none; }
+    .mention-item {
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.12s;
+    }
+    .mention-item:hover { background: var(--panel-line); }
+    .mention-tag {
+      color: var(--pending);
+      font-weight: 600;
+    }
+
+    /* ── Translation bubble ── */
+    .translation-bubble {
+      margin-top: 4px;
+      margin-left: 4px;
+      padding: 4px 8px;
+      background: rgba(95, 227, 192, 0.08);
+      border-left: 2px solid var(--live);
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--text-dim);
+      display: none;
+    }
+    .translate-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 3px;
+      margin-left: 4px;
+      opacity: 0.6;
+      width: auto;
+      flex-shrink: 0;
+      vertical-align: middle;
+      transition: opacity 0.2s;
+    }
+    .translate-btn:hover { opacity: 1; }
+
+    /* ── Chat emoji sizing ── */
+    .chat-emoji {
+      font-size: 20px;
+      line-height: 1;
+      vertical-align: middle;
+    }
   </style>
 </head>
 
@@ -1278,8 +1380,11 @@
           <button onclick="setChatPassword()">Set</button>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
-        <div class="chat-input">
+        <div class="chat-input" style="position:relative;">
+          <div class="emoji-picker hidden" id="emojiPicker"></div>
+          <div class="mention-dropdown hidden" id="mentionDropdown"></div>
           <input type="text" id="chatInput" placeholder="Message…" />
+          <button class="emoji-toggle-btn" id="emojiToggleBtn" onclick="toggleEmojiPicker()" type="button">😊</button>
           <button onclick="sendChat()">Send</button>
         </div>
       </div>
@@ -1300,6 +1405,7 @@
     let roomState = { guests: [], requests: [] };
     let queue = [];
     let chatHistory = [];
+    let knownUsers = new Set();
 
     // Audio fallback
     let useAudioFallback = false;
@@ -1605,6 +1711,155 @@
       localStorage.setItem('chat_password', pwd);
     }
 
+    // ─── Emoji Picker ─────────────────────────────────────────
+    const EMOJIS = [
+      // Faces & Emotions
+      '😀','😂','🤣','😍','🥰','😎','🤔','😐','😮','😢','😡','🤬','😴','🤯','😏','🥳','😕','🤥','😈','😇',
+      // Hands & People
+      '👍','👎','👏','🤝','🙏','💪','🤦','🤷','👀','💀','👑','🏆','🎁',
+      // Heart & Symbols
+      '❤️','🧡','💛','💚','💙','💜','💯','✨','🌟','🔥','⚡','🌈','✔️','❌','✅',
+      // Music & Entertainment
+      '🎵','🎶','🎸','🎤','🎧','🎼','🥁','📺','🎮','🎬','🎠','🎪','🎉','🎊',
+      // Food & Drinks
+      '🍕','💝','🍻','🥂','🏁','☕','🥤','🍰','🍫',
+      // Nature & Misc
+      '🐶','🐱','🐼','🕊️','🌙','⭐','🔥','💰','🚗','🛘️'
+    ];
+
+    function initEmojiPicker() {
+      const picker = document.getElementById('emojiPicker');
+      EMOJIS.forEach(emoji => {
+        const span = document.createElement('span');
+        span.className = 'emoji-btn-item';
+        span.textContent = emoji;
+        span.addEventListener('click', () => {
+          const input = document.getElementById('chatInput');
+          const pos = input.selectionStart;
+          const before = input.value.slice(0, pos);
+          const after = input.value.slice(pos);
+          input.value = before + emoji + after;
+          input.focus();
+          input.setSelectionRange(pos + emoji.length, pos + emoji.length);
+          // Keep picker open for multi-select
+        });
+        picker.appendChild(span);
+      });
+    }
+
+    function toggleEmojiPicker() {
+      const picker = document.getElementById('emojiPicker');
+      const btn = document.getElementById('emojiToggleBtn');
+      if (!picker.classList.contains('hidden')) {
+        picker.classList.add('hidden');
+        return;
+      }
+      // Calculate position from button bounds so it never gets clipped
+      const rect = btn.getBoundingClientRect();
+      const pickerW = 300;
+      const pickerH = 260;
+      const margin = 8;
+      // Prefer opening above the button
+      let top = rect.top - pickerH - margin;
+      let left = rect.right - pickerW;
+      // If not enough space above, open below
+      if (top < margin) top = rect.bottom + margin;
+      // Keep within left edge
+      if (left < margin) left = margin;
+      // Keep within right edge
+      if (left + pickerW > window.innerWidth - margin) left = window.innerWidth - pickerW - margin;
+      // Keep within bottom edge
+      if (top + pickerH > window.innerHeight - margin) top = window.innerHeight - pickerH - margin;
+      picker.style.top = top + 'px';
+      picker.style.left = left + 'px';
+      picker.classList.remove('hidden');
+    }
+
+    document.addEventListener('click', (e) => {
+      const picker = document.getElementById('emojiPicker');
+      const btn = document.getElementById('emojiToggleBtn');
+      if (picker && !picker.contains(e.target) && e.target !== btn) {
+        picker.classList.add('hidden');
+      }
+    });
+
+    // ─── @Mention ─────────────────────────────────────────────
+    function getKnownUsers() {
+      // Host knows admitted guests from roomState + chat history
+      const fromState = (roomState.guests || [])
+        .filter(g => g.status === 'admitted')
+        .map(g => g.name);
+      return [...new Set([...fromState, ...Array.from(knownUsers)])];
+    }
+
+    function handleMentionInput() {
+      const input = document.getElementById('chatInput');
+      const val = input.value;
+      const pos = input.selectionStart;
+      const beforeCursor = val.slice(0, pos);
+      const atIndex = beforeCursor.lastIndexOf('@');
+      if (atIndex !== -1 && (atIndex === 0 || val[atIndex - 1] === ' ')) {
+        const query = beforeCursor.slice(atIndex + 1).toLowerCase();
+        const users = getKnownUsers().filter(u => u.toLowerCase().startsWith(query));
+        if (users.length > 0) { showMentionDropdown(users, atIndex, query); return; }
+      }
+      hideMentionDropdown();
+    }
+
+    function showMentionDropdown(users, atIndex, query) {
+      const dropdown = document.getElementById('mentionDropdown');
+      dropdown.innerHTML = '';
+      users.slice(0, 6).forEach(user => {
+        const item = document.createElement('div');
+        item.className = 'mention-item';
+        item.textContent = '@' + user;
+        item.addEventListener('click', () => insertMention(user, atIndex, query));
+        dropdown.appendChild(item);
+      });
+      dropdown.classList.remove('hidden');
+    }
+
+    function hideMentionDropdown() {
+      const d = document.getElementById('mentionDropdown');
+      if (d) d.classList.add('hidden');
+    }
+
+    function insertMention(username, atIndex, query) {
+      const input = document.getElementById('chatInput');
+      const val = input.value;
+      const pos = input.selectionStart;
+      const before = val.slice(0, atIndex);
+      const after = val.slice(atIndex + 1 + query.length);
+      input.value = before + '@' + username + ' ' + after;
+      input.focus();
+      const newPos = atIndex + username.length + 2;
+      input.setSelectionRange(newPos, newPos);
+      hideMentionDropdown();
+    }
+
+    // ─── Translation ──────────────────────────────────────────
+    async function translateMessage(btn, text, bubble) {
+      if (bubble.style.display === 'block') {
+        bubble.style.display = 'none';
+        return;
+      }
+      bubble.style.display = 'block';
+      bubble.textContent = 'Translating...';
+      try {
+        // Google Translate unofficial endpoint — auto-detects Hinglish (Roman script Hindi)
+        const res = await fetch(
+          `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`
+        );
+        const data = await res.json();
+        // Response format: [[["translated","original",...]], null, "detected-lang"]
+        const translated = data?.[0]?.map(chunk => chunk?.[0]).filter(Boolean).join('') || 'Translation unavailable';
+        const detectedLang = data?.[2] || '';
+        bubble.textContent = `🌐 ${translated}` + (detectedLang ? ` (detected: ${detectedLang})` : '');
+      } catch(err) {
+        bubble.textContent = '⚠️ Translation failed';
+      }
+    }
+
     // ─── Chat send/receive ───────────────────────────────────
     async function sendChat() {
       const input = document.getElementById('chatInput');
@@ -1620,13 +1875,33 @@
       input.value = '';
     }
     document.getElementById('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+    document.getElementById('chatInput').addEventListener('input', handleMentionInput);
+
+    function wrapEmojis(html) {
+      // Wrap emoji characters in a larger span after HTML has been generated
+      return html.replace(/(<span[^>]*>)|(<\/span>)|(\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu,
+        (m, openTag, closeTag, emoji) => {
+          if (openTag || closeTag) return m;
+          return `<span class="chat-emoji">${emoji}</span>`;
+        }
+      );
+    }
+
+    function highlightMentions(text) {
+      // Escape HTML, highlight @mentions, then enlarge emojis
+      const escaped = escHtml(text).replace(/@([\w][\w\s]*?)(?=\s|$|&|<)/g, '<span class="mention-tag">@$1</span>');
+      return wrapEmojis(escaped);
+    }
 
     async function renderChatMessage(msg) {
       const container = document.getElementById('chatMessages');
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'display:flex;flex-direction:column;margin-bottom:3px;';
+
       const div = document.createElement('div');
       div.className = 'msg';
       const senderClass = msg.role === 'host' ? 'host' : '';
-      let displayText = msg.text;
+      let displayText = msg.text || '';
       if (msg.encrypted) {
         const password = localStorage.getItem('chat_password');
         if (password) {
@@ -1636,9 +1911,26 @@
           displayText = '[encrypted – set password to view]';
         }
       }
+
+      // Track sender for @mention autocomplete
+      if (msg.sender) knownUsers.add(msg.sender.replace(' 👑', '').trim());
+
+      const translateBubble = document.createElement('div');
+      translateBubble.className = 'translation-bubble';
+
+      const translateBtn = document.createElement('button');
+      translateBtn.className = 'translate-btn';
+      translateBtn.title = 'Translate (Hinglish→English)';
+      translateBtn.textContent = '🌐';
+      translateBtn.addEventListener('click', () => translateMessage(translateBtn, displayText, translateBubble));
+
       div.innerHTML = `<span class="sender ${senderClass}">${escHtml(msg.sender)}</span>
-      <span class="text">${escHtml(displayText)}</span>`;
-      container.appendChild(div);
+      <span class="text">${highlightMentions(displayText)}</span>`;
+      div.appendChild(translateBtn);
+
+      wrapper.appendChild(div);
+      wrapper.appendChild(translateBubble);
+      container.appendChild(wrapper);
       container.scrollTop = container.scrollHeight;
     }
 
@@ -1842,6 +2134,7 @@
       const saved = localStorage.getItem('chat_password');
       if (saved) document.getElementById('chatPassword').value = saved;
       fallbackAudio = document.getElementById('fallbackAudio');
+      initEmojiPicker();
     });
   </script>
 </body>

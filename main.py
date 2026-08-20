@@ -13,6 +13,7 @@ Guest link:  http://<lan-ip>:8000/join
 """
 import asyncio
 import json
+import re
 import secrets
 import socket
 import time
@@ -379,9 +380,16 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
                 req = next((r for r in room.song_requests if r["id"] == msg.get("requestId")), None)
                 if req:
                     room.song_requests.remove(req)
+                    # Safety: for YouTube, always store the bare 11-char video ID,
+                    # not a full URL (queue_next uses url directly as videoId).
+                    url = req["url"]
+                    if req["source"] == "youtube":
+                        yt_match = re.search(r'(?:v=|/shorts/|/embed/|/live/|youtu\.be/)([\w-]{11})', url)
+                        if yt_match:
+                            url = yt_match.group(1)
                     room.queue.append({
                         "id": str(uuid.uuid4()), "source": req["source"],
-                        "url": req["url"], "title": req["title"], "addedBy": req["name"],
+                        "url": url, "title": req["title"], "addedBy": req["name"],
                     })
                     await broadcast_to_all(make_queue_payload())
                     await push_room_state_to_host()
