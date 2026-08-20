@@ -42,10 +42,10 @@ Host a private synchronized music session on your LAN. Play YouTube, Spotify emb
 │                      LAN Listening Room                      │
 │                                                              │
 │   FastAPI + Uvicorn (Python)                                 │
-│   ┌─────────────┐   ┌─────────────┐   ┌──────────────────┐  │
-│   │  /ws/host   │   │  /ws/guest  │   │  HTTP REST API   │  │
-│   │  WebSocket  │   │  WebSocket  │   │  /api/upload     │  │
-│   └──────┬──────┘   └──────┬──────┘   │  /api/yt-audio   │  │
+│   ┌─────────────┐   ┌─────────────┐    ┌──────────────────┐  │
+│   │  /ws/host   │   │  /ws/guest  │    │  HTTP REST API   │  │
+│   │  WebSocket  │   │  WebSocket  │    │  /api/upload     │  │
+│   └──────┬──────┘   └──────┬──────┘    │  /api/yt-audio   │  │
 │          │                 │           └──────────────────┘  │
 │          └────────┬────────┘                                 │
 │                   │  In-memory Room State                    │
