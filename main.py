@@ -30,6 +30,8 @@ STATIC_DIR = APP_DIR / "static"
 UPLOADS_DIR = APP_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
+BAN_LIST_PATH = APP_DIR / "banned_guests.json"
+
 HOST_KEY = secrets.token_urlsafe(9)
 
 app = FastAPI()
@@ -84,7 +86,39 @@ class Room:
         ]
 
 
+# ---------------------------------------------------------------------------
+# Persistent Ban List
+# ---------------------------------------------------------------------------
+def load_ban_list() -> dict[str, dict]:
+    """Load ban list from JSON file. Returns {token: {name, bannedAt}}."""
+    if not BAN_LIST_PATH.exists():
+        return {}
+    try:
+        data = json.loads(BAN_LIST_PATH.read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_ban_list(ban_list: dict[str, dict]):
+    """Persist the ban list to disk."""
+    BAN_LIST_PATH.write_text(json.dumps(ban_list, indent=2))
+
+
+# In-memory mirror of the persisted ban list  {token -> {name, bannedAt}}
+_ban_list: dict[str, dict] = load_ban_list()
+
 room = Room()
+
+# Stamp any tokens already in the ban file into room.guests so
+# reconnect detection works even across server restarts.
+for _tok, _entry in _ban_list.items():
+    room.guests[_tok] = {
+        "name": _entry.get("name", "Guest"),
+        "ws": None,
+        "status": "banned",
+        "role": "guest",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +294,33 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 
+@app.get("/api/ban-list")
+async def api_ban_list(key: str = Query(default="")):
+    """Return the current ban list. Host-only."""
+    if key != HOST_KEY:
+        return JSONResponse({"error": "Not authorized"}, status_code=403)
+    return JSONResponse(
+        [
+            {"token": tok, "name": entry.get("name", "Guest"), "bannedAt": entry.get("bannedAt")}
+            for tok, entry in _ban_list.items()
+        ]
+    )
+
+
+@app.delete("/api/unban/{token}")
+async def api_unban(token: str, key: str = Query(default="")):
+    """Remove a guest from the ban list. Host-only."""
+    if key != HOST_KEY:
+        return JSONResponse({"error": "Not authorized"}, status_code=403)
+    if token not in _ban_list:
+        return JSONResponse({"error": "Token not in ban list"}, status_code=404)
+    _ban_list.pop(token, None)
+    save_ban_list(_ban_list)
+    # Also clear the in-memory guest entry so they can rejoin
+    room.guests.pop(token, None)
+    return JSONResponse({"ok": True, "token": token})
+
+
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     ALLOWED = {".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".opus", ".webm"}
@@ -336,11 +397,21 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
                     await push_room_state_to_host()
 
             elif action == "kick":
-                g = room.guests.get(msg.get("token"))
+                tok = msg.get("token")
+                g = room.guests.get(tok)
                 if g:
                     if g["ws"]:
                         await g["ws"].send_json({"type": "kicked"})
-                    room.guests.pop(msg["token"], None)
+                        try:
+                            await g["ws"].close()
+                        except Exception:
+                            pass
+                    # Mark banned in-memory (keep the entry so reconnect is caught)
+                    g["ws"] = None
+                    g["status"] = "banned"
+                    # Persist to disk
+                    _ban_list[tok] = {"name": g["name"], "bannedAt": time.time()}
+                    save_ban_list(_ban_list)
                     await push_room_state_to_host()
 
             elif action == "promote_cohost":
@@ -412,6 +483,20 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
 @app.websocket("/ws/guest")
 async def ws_guest(websocket: WebSocket, token: str = Query(...), name: str = Query(...)):
     await websocket.accept()
+
+    # Check persistent ban list first (covers server-restart scenario)
+    if token in _ban_list:
+        # Ensure in-memory entry is consistent
+        if token not in room.guests:
+            room.guests[token] = {
+                "name": _ban_list[token].get("name", name or "Guest"),
+                "ws": None,
+                "status": "banned",
+                "role": "guest",
+            }
+        await websocket.send_json({"type": "banned"})
+        await websocket.close()
+        return
 
     g = room.guests.get(token)
     if g and g["status"] == "banned":

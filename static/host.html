@@ -1289,6 +1289,97 @@
       line-height: 1;
       vertical-align: middle;
     }
+
+    /* ── Ban List ── */
+    .ban-list-section {
+      border-top: 1px solid var(--panel-line);
+      margin-top: 20px;
+      padding-top: 16px;
+    }
+
+    .ban-list-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      font-family: var(--font-display);
+      font-size: 13px;
+      color: var(--text-dim);
+      background: none;
+      border: none;
+      padding: 0;
+      width: 100%;
+      text-align: left;
+      transition: color 0.2s;
+    }
+
+    .ban-list-toggle:hover {
+      color: var(--danger);
+      transform: none;
+    }
+
+    .ban-list-toggle .chevron {
+      margin-left: auto;
+      transition: transform 0.2s;
+    }
+
+    .ban-list-toggle.open .chevron {
+      transform: rotate(180deg);
+    }
+
+    .ban-list-body {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .ban-list-body.open {
+      display: block;
+    }
+
+    .ban-card {
+      background: var(--panel);
+      border: 1px solid rgba(229, 89, 95, 0.3);
+      border-left: 3px solid var(--danger);
+      border-radius: 8px;
+      padding: 9px 12px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .ban-card .b-name {
+      font-weight: 500;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .ban-card .b-time {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .ban-card .unban-btn {
+      background: rgba(95, 227, 192, 0.12);
+      border: 1px solid rgba(95, 227, 192, 0.35);
+      color: var(--live);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+
+    .ban-card .unban-btn:hover {
+      background: rgba(95, 227, 192, 0.22);
+      transform: none;
+    }
   </style>
 </head>
 
@@ -1372,6 +1463,18 @@
     <div class="col">
       <div class="col-header">Guests <span class="badge" id="guestCount">0</span></div>
       <div class="guest-list" id="guestList"></div>
+
+      <!-- Ban List -->
+      <div class="ban-list-section">
+        <button class="ban-list-toggle" id="banListToggle" onclick="toggleBanList()">
+          🚫 Ban List <span class="badge" id="banCount">0</span>
+          <span class="chevron">▾</span>
+        </button>
+        <div class="ban-list-body" id="banListBody">
+          <div class="empty-list" id="banListEmpty">No banned guests.</div>
+          <div id="banListEntries"></div>
+        </div>
+      </div>
 
       <div class="chat-box">
         <div class="col-header" style="margin-bottom:8px;">Chat</div>
@@ -1943,12 +2046,72 @@
     // ─── Guest actions ──────────────────────────────────────
     function act(action, token) {
       ws.send(JSON.stringify({ action, token }));
+      // After a kick, refresh ban list so the new entry appears immediately
+      if (action === 'kick') setTimeout(fetchBanList, 400);
     }
     function approveRequest(id) {
       ws.send(JSON.stringify({ action: "approve_request", requestId: id }));
     }
     function dismissRequest(id) {
       ws.send(JSON.stringify({ action: "dismiss_request", requestId: id }));
+    }
+
+    // ─── Ban List ────────────────────────────────────────────
+    async function fetchBanList() {
+      try {
+        const res = await fetch(`/api/ban-list?key=${encodeURIComponent(HOST_KEY)}`);
+        if (!res.ok) return;
+        const list = await res.json();
+        renderBanList(list);
+      } catch (e) {
+        console.error('Could not fetch ban list', e);
+      }
+    }
+
+    function renderBanList(list) {
+      const badge = document.getElementById('banCount');
+      const empty = document.getElementById('banListEmpty');
+      const entries = document.getElementById('banListEntries');
+      badge.textContent = list.length;
+      if (!list.length) {
+        empty.style.display = 'block';
+        entries.innerHTML = '';
+        return;
+      }
+      empty.style.display = 'none';
+      let html = '';
+      list.forEach(b => {
+        const when = b.bannedAt ? new Date(b.bannedAt * 1000).toLocaleString() : 'unknown time';
+        html += `<div class="ban-card">
+          <div>
+            <div class="b-name">${escHtml(b.name)}</div>
+            <div class="b-time">Banned: ${escHtml(when)}</div>
+          </div>
+          <button class="unban-btn" onclick="unbanGuest('${escHtml(b.token)}')">Unban</button>
+        </div>`;
+      });
+      entries.innerHTML = html;
+    }
+
+    async function unbanGuest(token) {
+      try {
+        const res = await fetch(
+          `/api/unban/${encodeURIComponent(token)}?key=${encodeURIComponent(HOST_KEY)}`,
+          { method: 'DELETE' }
+        );
+        if (!res.ok) { showToast('Unban failed'); return; }
+        showToast('Guest unbanned — they can now rejoin');
+        await fetchBanList();
+      } catch (e) {
+        showToast('Unban error: ' + e.message);
+      }
+    }
+
+    function toggleBanList() {
+      const toggle = document.getElementById('banListToggle');
+      const body = document.getElementById('banListBody');
+      toggle.classList.toggle('open');
+      body.classList.toggle('open');
     }
 
     // ─── WebSocket ───────────────────────────────────────────
@@ -2135,6 +2298,7 @@
       if (saved) document.getElementById('chatPassword').value = saved;
       fallbackAudio = document.getElementById('fallbackAudio');
       initEmojiPicker();
+      fetchBanList();
     });
   </script>
 </body>
