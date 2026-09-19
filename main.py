@@ -19,7 +19,8 @@ import socket
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
+import ipaddress
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -33,6 +34,8 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 BAN_LIST_PATH = APP_DIR / "banned_guests.json"
 
 HOST_KEY = secrets.token_urlsafe(9)
+
+banned_ips: List[str] = []  # List of banned IP addresses
 
 app = FastAPI()
 
@@ -110,15 +113,9 @@ _ban_list: dict[str, dict] = load_ban_list()
 
 room = Room()
 
-# Stamp any tokens already in the ban file into room.guests so
-# reconnect detection works even across server restarts.
-for _tok, _entry in _ban_list.items():
-    room.guests[_tok] = {
-        "name": _entry.get("name", "Guest"),
-        "ws": None,
-        "status": "banned",
-        "role": "guest",
-    }
+# We no longer pre-populate room.guests with offline banned users.
+# They will be caught by IP when they try to connect.
+# _ban_list now uses IP addresses as keys instead of tokens.
 
 
 # ---------------------------------------------------------------------------
@@ -301,8 +298,8 @@ async def api_ban_list(key: str = Query(default="")):
         return JSONResponse({"error": "Not authorized"}, status_code=403)
     return JSONResponse(
         [
-            {"token": tok, "name": entry.get("name", "Guest"), "bannedAt": entry.get("bannedAt")}
-            for tok, entry in _ban_list.items()
+            {"token": ip, "name": entry.get("name", "Guest"), "bannedAt": entry.get("bannedAt")}
+            for ip, entry in _ban_list.items()
         ]
     )
 
@@ -312,13 +309,16 @@ async def api_unban(token: str, key: str = Query(default="")):
     """Remove a guest from the ban list. Host-only."""
     if key != HOST_KEY:
         return JSONResponse({"error": "Not authorized"}, status_code=403)
-    if token not in _ban_list:
-        return JSONResponse({"error": "Token not in ban list"}, status_code=404)
-    _ban_list.pop(token, None)
+    ip = token  # The UI passes the IP as the token identifier
+    if ip not in _ban_list:
+        return JSONResponse({"error": "IP not in ban list"}, status_code=404)
+    _ban_list.pop(ip, None)
     save_ban_list(_ban_list)
-    # Also clear the in-memory guest entry so they can rejoin
-    room.guests.pop(token, None)
-    return JSONResponse({"ok": True, "token": token})
+    # Also clear any in-memory guest entries matching this IP so they can rejoin
+    for t, g in list(room.guests.items()):
+        if g.get("ip") == ip or t == token:
+            room.guests.pop(t, None)
+    return JSONResponse({"ok": True, "token": ip})
 
 
 @app.post("/api/upload")
@@ -409,9 +409,14 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
                     # Mark banned in-memory (keep the entry so reconnect is caught)
                     g["ws"] = None
                     g["status"] = "banned"
-                    # Persist to disk
-                    _ban_list[tok] = {"name": g["name"], "bannedAt": time.time()}
-                    save_ban_list(_ban_list)
+                    # Persist to disk using IP
+                    ip = g.get("ip")
+                    if ip:
+                        _ban_list[ip] = {"name": g["name"], "bannedAt": time.time()}
+                        save_ban_list(_ban_list)
+                    else:
+                        _ban_list[tok] = {"name": g["name"], "bannedAt": time.time()}
+                        save_ban_list(_ban_list)
                     await push_room_state_to_host()
 
             elif action == "promote_cohost":
@@ -483,17 +488,35 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
 @app.websocket("/ws/guest")
 async def ws_guest(websocket: WebSocket, token: str = Query(...), name: str = Query(...)):
     await websocket.accept()
+    ip = websocket.client.host if websocket.client else None
 
-    # Check persistent ban list first (covers server-restart scenario)
-    if token in _ban_list:
-        # Ensure in-memory entry is consistent
+    # Check persistent ban list first by IP (or token for backwards compatibility)
+    is_banned = False
+    banned_entry = None
+    if ip and ip in _ban_list:
+        is_banned = True
+        banned_entry = _ban_list[ip]
+    elif token in _ban_list:
+        is_banned = True
+        banned_entry = _ban_list[token]
+        # Automatically upgrade the ban to an IP ban
+        if ip:
+            _ban_list[ip] = banned_entry
+            _ban_list.pop(token, None)
+            save_ban_list(_ban_list)
+
+    if is_banned:
         if token not in room.guests:
             room.guests[token] = {
-                "name": _ban_list[token].get("name", name or "Guest"),
+                "name": banned_entry.get("name", name or "Guest"),
                 "ws": None,
                 "status": "banned",
                 "role": "guest",
+                "ip": ip
             }
+        else:
+            room.guests[token]["status"] = "banned"
+            room.guests[token]["ip"] = ip
         await websocket.send_json({"type": "banned"})
         await websocket.close()
         return
@@ -507,8 +530,9 @@ async def ws_guest(websocket: WebSocket, token: str = Query(...), name: str = Qu
     if g:
         g["ws"] = websocket
         g["name"] = name or g["name"]
+        g["ip"] = ip
     else:
-        room.guests[token] = {"name": name or "Guest", "ws": websocket, "status": "pending", "role": "guest"}
+        room.guests[token] = {"name": name or "Guest", "ws": websocket, "status": "pending", "role": "guest", "ip": ip}
         g = room.guests[token]
 
     if g["status"] == "admitted":
