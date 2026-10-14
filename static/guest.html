@@ -863,8 +863,62 @@
       font-size: 13px;
     }
 
-    .cohost-queue-add button:hover {
-      opacity: 0.8;
+    .audio-controls-bar {
+      margin-top: 12px;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .vol-mute-btn {
+      background: var(--bg);
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      font-size: 15px;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .vol-mute-btn:hover {
+      border-color: var(--live);
+      background: rgba(95, 227, 192, 0.1);
+    }
+
+    .vol-mute-btn.muted {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: rgba(229, 89, 95, 0.15);
+    }
+
+    .guest-vol-slider {
+      flex: 1;
+      height: 5px;
+      accent-color: var(--live);
+      cursor: pointer;
+    }
+
+    .vol-label {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      min-width: 44px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .vol-label.muted {
+      color: var(--danger);
     }
 
     .toast {
@@ -1075,6 +1129,11 @@
             <audio id="fallbackAudio" controls></audio>
           </div>
         </div>
+        <div class="audio-controls-bar" id="audioControlsBar">
+          <button class="vol-mute-btn" id="guestMuteBtn" onclick="toggleGuestMute()" title="Mute/Unmute audio">🔊</button>
+          <input type="range" class="guest-vol-slider" id="guestVolumeSlider" min="0" max="100" value="100" oninput="onGuestVolumeInput(this.value)" onchange="onGuestVolumeChange(this.value)" />
+          <span class="vol-label" id="guestVolumeLabel">100%</span>
+        </div>
         <div class="transport" id="cohostControls" style="display:none;">
           <button onclick="sendCmd('play')">▶ Play</button>
           <button onclick="sendCmd('pause')">⏸ Pause</button>
@@ -1170,6 +1229,81 @@
     let fallbackPosition = 0;
     let fallbackPlaying = false;
 
+    // Volume & Mute control
+    let guestVolume = 100;
+    let guestMuted = false;
+    let volSendTimer = null;
+
+    function applyGuestVolume(vol, muted) {
+      if (typeof vol === 'number') guestVolume = vol;
+      if (typeof muted === 'boolean') guestMuted = muted;
+
+      if (ytReady && ytPlayer && ytPlayer.setVolume) {
+        try {
+          ytPlayer.setVolume(guestVolume);
+          if (guestMuted) ytPlayer.mute(); else ytPlayer.unMute();
+        } catch (e) { }
+      }
+      if (fallbackAudio) {
+        try {
+          fallbackAudio.volume = guestVolume / 100;
+          fallbackAudio.muted = guestMuted;
+        } catch (e) { }
+      }
+
+      const slider = document.getElementById('guestVolumeSlider');
+      if (slider && document.activeElement !== slider) slider.value = guestVolume;
+      const label = document.getElementById('guestVolumeLabel');
+      if (label) {
+        label.textContent = guestMuted ? 'Muted' : `${guestVolume}%`;
+        label.classList.toggle('muted', guestMuted);
+      }
+      const btn = document.getElementById('guestMuteBtn');
+      if (btn) {
+        btn.textContent = guestMuted ? '🔇' : (guestVolume === 0 ? '🔈' : '🔊');
+        btn.classList.toggle('muted', guestMuted);
+        btn.title = guestMuted ? 'Unmute' : 'Mute';
+      }
+    }
+
+    function onGuestVolumeInput(val) {
+      const vol = parseInt(val, 10);
+      guestVolume = vol;
+      if (guestMuted && vol > 0) guestMuted = false;
+      applyGuestVolume(guestVolume, guestMuted);
+
+      clearTimeout(volSendTimer);
+      volSendTimer = setTimeout(() => {
+        sendGuestVolume();
+      }, 50);
+    }
+
+    function onGuestVolumeChange(val) {
+      const vol = parseInt(val, 10);
+      guestVolume = vol;
+      if (guestMuted && vol > 0) guestMuted = false;
+      applyGuestVolume(guestVolume, guestMuted);
+      clearTimeout(volSendTimer);
+      sendGuestVolume();
+    }
+
+    function toggleGuestMute() {
+      guestMuted = !guestMuted;
+      applyGuestVolume(guestVolume, guestMuted);
+      clearTimeout(volSendTimer);
+      sendGuestVolume();
+    }
+
+    function sendGuestVolume() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          action: "set_volume",
+          volume: guestVolume,
+          muted: guestMuted
+        }));
+      }
+    }
+
     // ─── YouTube ────────────────────────────────────────────────
     function onYouTubeIframeAPIReady() {
       ytReady = true;
@@ -1177,7 +1311,10 @@
         height: '100%', width: '100%',
         playerVars: { rel: 0, modestbranding: 1 },
         events: {
-          onReady: () => { if (latestSync) applySync(latestSync); },
+          onReady: () => {
+            applyGuestVolume(guestVolume, guestMuted);
+            if (latestSync) applySync(latestSync);
+          },
           onError: onPlayerError
         }
       });
@@ -1223,6 +1360,7 @@
         audio.src = streamUrl;
         audio.load();
         fallbackAudio = audio;
+        applyGuestVolume(guestVolume, guestMuted);
 
         if (fallbackPosition > 0) audio.currentTime = fallbackPosition;
         if (fallbackPlaying) audio.play().catch(() => { });
@@ -1299,6 +1437,21 @@
             updateRoleUI(myRole);
             break;
 
+          case 'volume_control':
+            const oldMuted = guestMuted;
+            const oldVol = guestVolume;
+            applyGuestVolume(msg.volume, msg.muted);
+            if (msg.from_host) {
+              if (msg.muted && !oldMuted) {
+                showToast("Host muted your audio");
+              } else if (!msg.muted && oldMuted) {
+                showToast("Host unmuted your audio");
+              } else if (msg.volume !== oldVol) {
+                showToast(`Host set volume to ${msg.volume}%`);
+              }
+            }
+            break;
+
           default:
             console.log('Unhandled guest message:', msg);
         }
@@ -1346,6 +1499,7 @@
         }
         setTimeout(() => { suppressEvents = false; }, 500);
       }
+      applyGuestVolume(guestVolume, guestMuted);
     }
 
     // ─── Chat Encryption ─────────────────────────────────────

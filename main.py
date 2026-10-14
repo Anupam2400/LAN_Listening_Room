@@ -84,9 +84,12 @@ class Room:
                 "status": g["status"],
                 "role": g.get("role", "guest"),
                 "online": g["ws"] is not None,
+                "volume": g.get("volume", 100),
+                "muted": g.get("muted", False),
             }
             for t, g in self.guests.items()
         ]
+
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +389,11 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
                         await g["ws"].send_json(make_queue_payload())
                         await g["ws"].send_json({"type": "chat_history", "messages": room.chat[-100:]})
                         await g["ws"].send_json({"type": "role_update", "role": g.get("role", "guest")})
+                        await g["ws"].send_json({
+                            "type": "volume_control",
+                            "volume": g.get("volume", 100),
+                            "muted": g.get("muted", False),
+                        })
                     await push_room_state_to_host()
 
             elif action == "reject":
@@ -434,6 +442,51 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
                     if g["ws"]:
                         await g["ws"].send_json({"type": "role_update", "role": "guest"})
                     await push_room_state_to_host()
+
+            elif action == "set_guest_volume":
+                tok = msg.get("token")
+                g = room.guests.get(tok)
+                if g:
+                    if "volume" in msg:
+                        g["volume"] = max(0, min(100, int(msg["volume"])))
+                    if "muted" in msg:
+                        g["muted"] = bool(msg["muted"])
+                    if g["ws"]:
+                        await g["ws"].send_json({
+                            "type": "volume_control",
+                            "volume": g.get("volume", 100),
+                            "muted": g.get("muted", False),
+                            "from_host": True,
+                        })
+                    await push_room_state_to_host()
+
+            elif action == "set_guest_mute":
+                tok = msg.get("token")
+                g = room.guests.get(tok)
+                if g:
+                    g["muted"] = bool(msg.get("muted", False))
+                    if g["ws"]:
+                        await g["ws"].send_json({
+                            "type": "volume_control",
+                            "volume": g.get("volume", 100),
+                            "muted": g["muted"],
+                            "from_host": True,
+                        })
+                    await push_room_state_to_host()
+
+            elif action == "mute_all_guests":
+                muted = bool(msg.get("muted", True))
+                for g in room.guests.values():
+                    if g["status"] == "admitted":
+                        g["muted"] = muted
+                        if g["ws"]:
+                            await g["ws"].send_json({
+                                "type": "volume_control",
+                                "volume": g.get("volume", 100),
+                                "muted": muted,
+                                "from_host": True,
+                            })
+                await push_room_state_to_host()
 
             elif action == "chat_send":
                 entry = {"sender": "Host 👑", "text": msg.get("text", ""), "timestamp": time.time(), "role": "host"}
@@ -531,8 +584,18 @@ async def ws_guest(websocket: WebSocket, token: str = Query(...), name: str = Qu
         g["ws"] = websocket
         g["name"] = name or g["name"]
         g["ip"] = ip
+        g.setdefault("volume", 100)
+        g.setdefault("muted", False)
     else:
-        room.guests[token] = {"name": name or "Guest", "ws": websocket, "status": "pending", "role": "guest", "ip": ip}
+        room.guests[token] = {
+            "name": name or "Guest",
+            "ws": websocket,
+            "status": "pending",
+            "role": "guest",
+            "ip": ip,
+            "volume": 100,
+            "muted": False,
+        }
         g = room.guests[token]
 
     if g["status"] == "admitted":
@@ -541,6 +604,11 @@ async def ws_guest(websocket: WebSocket, token: str = Query(...), name: str = Qu
         await websocket.send_json(make_queue_payload())
         await websocket.send_json({"type": "chat_history", "messages": room.chat[-100:]})
         await websocket.send_json({"type": "role_update", "role": g.get("role", "guest")})
+        await websocket.send_json({
+            "type": "volume_control",
+            "volume": g.get("volume", 100),
+            "muted": g.get("muted", False),
+        })
     else:
         await websocket.send_json({"type": "pending"})
 
@@ -580,6 +648,13 @@ async def ws_guest(websocket: WebSocket, token: str = Query(...), name: str = Qu
                     "url": msg.get("url", ""), "title": msg.get("title", "Unknown"),
                     "timestamp": time.time(),
                 })
+                await push_room_state_to_host()
+
+            elif action == "set_volume":
+                if "volume" in msg:
+                    g["volume"] = max(0, min(100, int(msg["volume"])))
+                if "muted" in msg:
+                    g["muted"] = bool(msg["muted"])
                 await push_room_state_to_host()
 
             elif action in ("play", "pause", "seek", "set_video", "set_spotify", "set_local",

@@ -158,6 +158,17 @@ All real-time communication uses JSON messages over WebSocket.
 | `approve_request` / `dismiss_request` | `requestId` | Handle recommendations |
 | `chat_send` | `text` | Broadcast chat message |
 | `chat_send_encrypted` | `data` | Broadcast encrypted message |
+| `set_guest_volume` | `token`, `volume`, `muted` | Remote adjust volume/mute for a specific guest |
+| `set_guest_mute` | `token`, `muted` | Remote mute/unmute a specific guest |
+| `mute_all_guests` | `muted` | Bulk mute/unmute all admitted guests |
+
+### Guest → Server (selected actions)
+
+| Action | Payload fields | Effect |
+|---|---|---|
+| `set_volume` | `volume`, `muted` | Report guest volume/mute adjustments to server & host |
+| `chat_send` | `text` | Send chat message |
+| `recommend` | `url`, `title`, `source` | Suggest song to host |
 
 ### Server → Clients (selected events)
 
@@ -165,7 +176,8 @@ All real-time communication uses JSON messages over WebSocket.
 |---|---|
 | `sync` | Full playback state (source, position, isPlaying) |
 | `queue_update` | Full queue array |
-| `room_state` | Guest list + song requests |
+| `room_state` | Guest list (including volume & mute status) + song requests |
+| `volume_control` | Targeted volume and mute updates for a guest |
 | `chat_message` | New chat message |
 | `admitted` / `rejected` / `kicked` / `banned` | Guest status change |
 | `role_update` | Guest role changed (guest ↔ co-host) |
@@ -199,8 +211,8 @@ LAN_Listening_Room/
 
 ## 🛣️ Roadmap
 
-- [ ] Persistent ban list (JSON file) so kicked guests are flagged on reconnect
-- [ ] Per-guest volume / mute control
+- [x] Persistent ban list (JSON file) so kicked guests are flagged on reconnect
+- [x] Per-guest volume / mute control
 - [ ] Room history / playback log
 - [ ] WebRTC audio relay (stream *anything* playing on the host machine, not just YouTube)
 - [ ] Multiple concurrent rooms

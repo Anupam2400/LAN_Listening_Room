@@ -1050,6 +1050,149 @@
 
     .guest-card.admitted {
       border-left: 3px solid var(--live);
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    .guest-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .guest-card-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .guest-card-audio {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(10, 14, 26, 0.55);
+      border: 1px solid var(--panel-line);
+      border-radius: 6px;
+      padding: 5px 8px;
+    }
+
+    .g-mute-btn {
+      background: transparent;
+      border: 1px solid var(--panel-line);
+      color: var(--text);
+      font-size: 13px;
+      width: 26px;
+      height: 26px;
+      border-radius: 5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+
+    .g-mute-btn:hover {
+      border-color: var(--live);
+      background: rgba(95, 227, 192, 0.1);
+    }
+
+    .g-mute-btn.muted {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: rgba(229, 89, 95, 0.15);
+    }
+
+    .g-vol-slider {
+      flex: 1;
+      height: 4px;
+      accent-color: var(--live);
+      cursor: pointer;
+      min-width: 60px;
+    }
+
+    .g-vol-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      min-width: 38px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .g-vol-label.muted {
+      color: var(--danger);
+    }
+
+    .bulk-mute-btn {
+      background: transparent;
+      border: 1px solid var(--panel-line);
+      color: var(--text-dim);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+
+    .bulk-mute-btn:hover {
+      border-color: var(--live);
+      color: var(--text);
+    }
+
+    .bulk-mute-btn.active {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: rgba(229, 89, 95, 0.15);
+    }
+
+    .host-vol-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 8px;
+      padding: 6px 12px;
+    }
+
+    .host-mute-btn {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 15px;
+      cursor: pointer;
+      padding: 0 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+    }
+
+    .host-mute-btn.muted {
+      color: var(--danger);
+    }
+
+    .host-vol-slider {
+      flex: 1;
+      height: 4px;
+      accent-color: var(--live);
+      cursor: pointer;
+    }
+
+    .host-vol-label {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      min-width: 36px;
+      text-align: right;
     }
 
     .chat-box {
@@ -1446,6 +1589,11 @@
         <button onclick="sendCmd('pause')">⏸ Pause</button>
         <button class="next-btn" onclick="sendCmd('next')">⏭ Next</button>
       </div>
+      <div class="host-vol-group" id="hostVolGroup">
+        <button class="host-mute-btn" id="hostMuteBtn" onclick="toggleHostMute()" title="Mute/Unmute host playback">🔊</button>
+        <input type="range" class="host-vol-slider" id="hostVolSlider" min="0" max="100" value="100" oninput="setHostLocalVolume(this.value)" />
+        <span class="host-vol-label" id="hostVolLabel">100%</span>
+      </div>
     </div>
 
     <!-- CENTER: Queue + Requests -->
@@ -1461,7 +1609,10 @@
 
     <!-- RIGHT: Guests + Chat -->
     <div class="col">
-      <div class="col-header">Guests <span class="badge" id="guestCount">0</span></div>
+      <div class="col-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Guests <span class="badge" id="guestCount">0</span></span>
+        <button class="bulk-mute-btn" id="bulkMuteBtn" onclick="toggleMuteAllGuests()" style="display:none;" title="Mute/Unmute all admitted guests">🔇 Mute All</button>
+      </div>
       <div class="guest-list" id="guestList"></div>
 
       <!-- Ban List -->
@@ -1525,6 +1676,7 @@
         width: '100%',
         playerVars: { rel: 0, modestbranding: 1 },
         events: {
+          onReady: () => { applyHostVolume(); },
           onStateChange: onPlayerStateChange,
           onError: onPlayerError
         }
@@ -1584,6 +1736,7 @@
         audio.src = streamUrl;
         audio.load();
         fallbackAudio = audio;
+        applyHostVolume();
 
         if (fallbackPosition > 0) audio.currentTime = fallbackPosition;
         if (fallbackPlaying) audio.play().catch(() => { });
@@ -2043,6 +2196,73 @@
       messages.forEach(m => renderChatMessage(m));
     }
 
+    // ─── Host Local Volume ────────────────────────────────────
+    let hostLocalVol = 100;
+    let hostLocalMuted = false;
+
+    function applyHostVolume() {
+      if (ytReady && ytPlayer && ytPlayer.setVolume) {
+        try {
+          ytPlayer.setVolume(hostLocalVol);
+          if (hostLocalMuted) ytPlayer.mute(); else ytPlayer.unMute();
+        } catch (e) { }
+      }
+      if (fallbackAudio) {
+        try {
+          fallbackAudio.volume = hostLocalVol / 100;
+          fallbackAudio.muted = hostLocalMuted;
+        } catch (e) { }
+      }
+      const label = document.getElementById('hostVolLabel');
+      if (label) label.textContent = hostLocalMuted ? 'Muted' : `${hostLocalVol}%`;
+      const btn = document.getElementById('hostMuteBtn');
+      if (btn) {
+        btn.textContent = hostLocalMuted ? '🔇' : (hostLocalVol === 0 ? '🔈' : '🔊');
+        btn.classList.toggle('muted', hostLocalMuted);
+      }
+      const slider = document.getElementById('hostVolSlider');
+      if (slider && document.activeElement !== slider) slider.value = hostLocalVol;
+    }
+
+    function setHostLocalVolume(val) {
+      hostLocalVol = parseInt(val, 10);
+      if (hostLocalVol > 0 && hostLocalMuted) hostLocalMuted = false;
+      applyHostVolume();
+    }
+
+    function toggleHostMute() {
+      hostLocalMuted = !hostLocalMuted;
+      applyHostVolume();
+    }
+
+    // ─── Guest Volume Actions ────────────────────────────────
+    let volDebounceTimers = {};
+    function setGuestVolume(token, volume, muted) {
+      const volInt = parseInt(volume, 10);
+      const label = document.getElementById(`g-vol-label-${token}`);
+      if (label && !muted) {
+        label.textContent = `${volInt}%`;
+        label.classList.remove('muted');
+      }
+      clearTimeout(volDebounceTimers[token]);
+      volDebounceTimers[token] = setTimeout(() => {
+        const payload = { action: "set_guest_volume", token, volume: volInt };
+        if (typeof muted !== 'undefined') payload.muted = muted;
+        ws.send(JSON.stringify(payload));
+      }, 50);
+    }
+
+    function toggleGuestMute(token, currentlyMuted) {
+      const newMuted = !currentlyMuted;
+      ws.send(JSON.stringify({ action: "set_guest_mute", token, muted: newMuted }));
+    }
+
+    function toggleMuteAllGuests() {
+      const admitted = (roomState.guests || []).filter(g => g.status === 'admitted');
+      const anyUnmuted = admitted.some(g => !g.muted);
+      ws.send(JSON.stringify({ action: "mute_all_guests", muted: anyUnmuted }));
+    }
+
     // ─── Guest actions ──────────────────────────────────────
     function act(action, token) {
       ws.send(JSON.stringify({ action, token }));
@@ -2190,6 +2410,7 @@
         }
         setTimeout(() => { suppressEvents = false; }, 500);
       }
+      applyHostVolume();
     }
 
     // ─── Render functions ────────────────────────────────────
@@ -2197,6 +2418,29 @@
       const container = document.getElementById('guestList');
       const pending = guests.filter(g => g.status === 'pending');
       const admitted = guests.filter(g => g.status === 'admitted');
+
+      // Update bulk mute button in header
+      const bulkBtn = document.getElementById('bulkMuteBtn');
+      if (bulkBtn) {
+        if (admitted.length > 0) {
+          bulkBtn.style.display = 'inline-flex';
+          const anyUnmuted = admitted.some(g => !g.muted);
+          if (anyUnmuted) {
+            bulkBtn.innerHTML = '🔇 Mute All';
+            bulkBtn.classList.remove('active');
+          } else {
+            bulkBtn.innerHTML = '🔊 Unmute All';
+            bulkBtn.classList.add('active');
+          }
+        } else {
+          bulkBtn.style.display = 'none';
+        }
+      }
+
+      // Check if an input inside guestList currently has active focus / dragging
+      const activeEl = document.activeElement;
+      const activeToken = activeEl && activeEl.dataset && activeEl.dataset.token;
+
       let html = '';
       if (pending.length) {
         html += `<div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">Waiting (${pending.length})</div>`;
@@ -2214,13 +2458,27 @@
         html += `<div style="font-size:12px;color:var(--text-dim);margin:10px 0 4px;">In room (${admitted.length})</div>`;
         admitted.forEach(g => {
           const isCohost = g.role === 'cohost';
-          html += `<div class="guest-card admitted">
-          <span class="g-name">${escHtml(g.name)}</span>
-          <span class="g-role ${isCohost ? 'cohost' : ''}">${isCohost ? 'co-host' : 'guest'}</span>
-          <div class="g-actions">
-            ${!isCohost ? `<button class="promote" onclick="act('promote_cohost','${g.token}')">Make co-host</button>` : ''}
-            ${isCohost ? `<button class="demote" onclick="act('demote_cohost','${g.token}')">Remove co-host</button>` : ''}
-            <button class="kick" onclick="act('kick','${g.token}')">Kick</button>
+          const vol = typeof g.volume === 'number' ? g.volume : 100;
+          const isMuted = !!g.muted;
+          const muteIcon = isMuted ? '🔇' : (vol === 0 ? '🔈' : '🔊');
+          const volLabelText = isMuted ? 'Muted' : `${vol}%`;
+
+          html += `<div class="guest-card admitted" id="guest-card-${g.token}">
+          <div class="guest-card-header">
+            <div class="guest-card-info">
+              <span class="g-name">${escHtml(g.name)}</span>
+              <span class="g-role ${isCohost ? 'cohost' : ''}">${isCohost ? 'co-host' : 'guest'}</span>
+            </div>
+            <div class="g-actions">
+              ${!isCohost ? `<button class="promote" onclick="act('promote_cohost','${g.token}')">Make co-host</button>` : ''}
+              ${isCohost ? `<button class="demote" onclick="act('demote_cohost','${g.token}')">Remove co-host</button>` : ''}
+              <button class="kick" onclick="act('kick','${g.token}')">Kick</button>
+            </div>
+          </div>
+          <div class="guest-card-audio">
+            <button class="g-mute-btn ${isMuted ? 'muted' : ''}" id="g-mute-btn-${g.token}" onclick="toggleGuestMute('${g.token}', ${isMuted})" title="${isMuted ? 'Unmute' : 'Mute'}">${muteIcon}</button>
+            <input type="range" class="g-vol-slider" id="g-vol-slider-${g.token}" data-token="${g.token}" min="0" max="100" value="${vol}" oninput="setGuestVolume('${g.token}', this.value, ${isMuted})" />
+            <span class="g-vol-label ${isMuted ? 'muted' : ''}" id="g-vol-label-${g.token}">${volLabelText}</span>
           </div>
         </div>`;
         });
@@ -2228,7 +2486,18 @@
       if (!pending.length && !admitted.length) {
         html = `<div class="empty-list">No guests yet.</div>`;
       }
-      container.innerHTML = html;
+
+      if (activeToken && activeEl.classList.contains('g-vol-slider')) {
+        const currentVal = activeEl.value;
+        container.innerHTML = html;
+        const restoredSlider = document.getElementById(`g-vol-slider-${activeToken}`);
+        if (restoredSlider) {
+          restoredSlider.value = currentVal;
+          restoredSlider.focus();
+        }
+      } else {
+        container.innerHTML = html;
+      }
     }
 
     function renderQueue(queue) {
