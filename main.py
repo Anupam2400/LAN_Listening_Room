@@ -76,6 +76,9 @@ class Room:
         self.song_requests: list[dict] = []
         # [{id, token, name, source, url, title, timestamp}]
 
+        self.playback_log: list[dict] = []
+        # [{id, action, title, source, position, actor, actorRole, timestamp}]
+
     def guest_public_list(self):
         return [
             {
@@ -158,6 +161,26 @@ def make_room_state_payload():
     }
 
 
+def log_playback_event(action: str, actor: str = "Host", actor_role: str = "host",
+                       title: str = None, position: float = None, source: str = None,
+                       extra: dict = None):
+    """Append an entry to room.playback_log and return it."""
+    entry = {
+        "id": str(uuid.uuid4()),
+        "action": action,
+        "title": title or room.now_playing.get("title"),
+        "source": source or room.now_playing.get("source"),
+        "position": round(position, 2) if position is not None else None,
+        "actor": actor,
+        "actorRole": actor_role,
+        "timestamp": time.time(),
+    }
+    if extra:
+        entry.update(extra)
+    room.playback_log.append(entry)
+    return entry
+
+
 async def broadcast_to_all(payload: dict):
     """Send to host and all admitted guests."""
     if room.host_ws:
@@ -197,7 +220,7 @@ async def push_room_state_to_host():
 # ---------------------------------------------------------------------------
 # Shared playback action handler (host + co-host)
 # ---------------------------------------------------------------------------
-async def handle_playback_action(action: str, msg: dict):
+async def handle_playback_action(action: str, msg: dict, actor: str = "Host", actor_role: str = "host"):
     if action == "set_video":
         room.now_playing.update({
             "source": "youtube", "videoId": msg["videoId"],
@@ -205,7 +228,10 @@ async def handle_playback_action(action: str, msg: dict):
             "title": msg.get("title"),
             "isPlaying": True, "position": 0.0, "updatedAt": time.time(),
         })
+        entry = log_playback_event("set_video", actor=actor, actor_role=actor_role,
+                                   title=msg.get("title") or msg.get("videoId"), source="youtube", position=0.0)
         await broadcast_to_all(make_sync_payload())
+        await push_to_host({"type": "history_entry", "entry": entry})
 
     elif action == "set_spotify":
         room.now_playing.update({
@@ -214,7 +240,10 @@ async def handle_playback_action(action: str, msg: dict):
             "title": msg.get("title"),
             "isPlaying": True, "position": 0.0, "updatedAt": time.time(),
         })
+        entry = log_playback_event("set_spotify", actor=actor, actor_role=actor_role,
+                                   title=msg.get("title") or msg.get("spotifyUri"), source="spotify", position=0.0)
         await broadcast_to_all(make_sync_payload())
+        await push_to_host({"type": "history_entry", "entry": entry})
 
     elif action == "set_local":
         room.now_playing.update({
@@ -223,7 +252,10 @@ async def handle_playback_action(action: str, msg: dict):
             "title": msg.get("title"),
             "isPlaying": True, "position": 0.0, "updatedAt": time.time(),
         })
+        entry = log_playback_event("set_local", actor=actor, actor_role=actor_role,
+                                   title=msg.get("title") or msg.get("fileUrl"), source="local", position=0.0)
         await broadcast_to_all(make_sync_payload())
+        await push_to_host({"type": "history_entry", "entry": entry})
 
     elif action in ("play", "pause", "seek"):
         if action == "play":
@@ -233,7 +265,10 @@ async def handle_playback_action(action: str, msg: dict):
         if "position" in msg:
             room.now_playing["position"] = msg["position"]
         room.now_playing["updatedAt"] = time.time()
+        entry = log_playback_event(action, actor=actor, actor_role=actor_role,
+                                   position=msg.get("position"))
         await broadcast_to_all(make_sync_payload())
+        await push_to_host({"type": "history_entry", "entry": entry})
 
     elif action == "queue_add":
         room.queue.append({
@@ -271,8 +306,11 @@ async def handle_playback_action(action: str, msg: dict):
                 **updates, "title": nxt["title"],
                 "isPlaying": True, "position": 0.0, "updatedAt": time.time(),
             })
+            entry = log_playback_event("queue_next", actor=actor, actor_role=actor_role,
+                                       title=nxt["title"], source=nxt["source"], position=0.0)
             await broadcast_to_all(make_sync_payload())
             await broadcast_to_all(make_queue_payload())
+            await push_to_host({"type": "history_entry", "entry": entry})
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +330,14 @@ async def host_page(key: str = Query(default="")):
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+
+
+@app.get("/api/history")
+async def api_history(key: str = Query(default="")):
+    """Return the full playback log for this session. Host-only."""
+    if key != HOST_KEY:
+        return JSONResponse({"error": "Not authorized"}, status_code=403)
+    return JSONResponse(room.playback_log)
 
 
 @app.get("/api/ban-list")
@@ -373,6 +419,7 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
     await websocket.send_json(make_sync_payload())
     await websocket.send_json(make_queue_payload())
     await websocket.send_json({"type": "chat_history", "messages": room.chat[-100:]})
+    await websocket.send_json({"type": "history_snapshot", "entries": room.playback_log})
 
     try:
         while True:
@@ -394,6 +441,9 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
                             "volume": g.get("volume", 100),
                             "muted": g.get("muted", False),
                         })
+                    entry = log_playback_event("guest_admitted", actor="Host", actor_role="host",
+                                              extra={"guestName": g["name"]})
+                    await push_to_host({"type": "history_entry", "entry": entry})
                     await push_room_state_to_host()
 
             elif action == "reject":
@@ -526,6 +576,10 @@ async def ws_host(websocket: WebSocket, key: str = Query(default="")):
             elif action == "dismiss_request":
                 room.song_requests = [r for r in room.song_requests if r["id"] != msg.get("requestId")]
                 await push_room_state_to_host()
+
+            elif action == "clear_history":
+                room.playback_log.clear()
+                await push_to_host({"type": "history_snapshot", "entries": []})
 
             elif action in ("set_video", "set_spotify", "set_local", "play", "pause", "seek",
                             "queue_add", "queue_remove", "queue_reorder", "queue_next"):
@@ -661,7 +715,7 @@ async def ws_guest(websocket: WebSocket, token: str = Query(...), name: str = Qu
                             "queue_add", "queue_remove", "queue_reorder", "queue_next"):
                 if g.get("role") == "cohost":
                     msg.setdefault("addedBy", g["name"])
-                    await handle_playback_action(action, msg)
+                    await handle_playback_action(action, msg, actor=g["name"], actor_role="cohost")
 
     except WebSocketDisconnect:
         g = room.guests.get(token)

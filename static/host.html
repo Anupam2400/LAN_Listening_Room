@@ -1523,6 +1523,194 @@
       background: rgba(95, 227, 192, 0.22);
       transform: none;
     }
+
+    /* ── Playback History ───────────────────────────────────── */
+    .history-section {
+      margin-top: 20px;
+      border-top: 1px solid var(--panel-line);
+      padding-top: 16px;
+    }
+
+    .history-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-display);
+      font-size: 13px;
+      color: var(--text-dim);
+      background: none;
+      border: none;
+      padding: 0;
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .history-toggle:hover {
+      color: var(--live);
+      transform: none;
+    }
+
+    .history-toggle .chevron {
+      margin-left: auto;
+      transition: transform 0.2s;
+      font-size: 12px;
+    }
+
+    .history-toggle.open .chevron {
+      transform: rotate(180deg);
+    }
+
+    .history-body {
+      display: none;
+      margin-top: 12px;
+    }
+
+    .history-body.open {
+      display: block;
+    }
+
+    .history-toolbar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .history-btn {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--panel-line);
+      background: var(--panel);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .history-btn:hover {
+      color: var(--live);
+      border-color: var(--live);
+      transform: none;
+    }
+
+    .history-btn.danger:hover {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .history-timeline {
+      max-height: 360px;
+      overflow-y: auto;
+      position: relative;
+      padding-left: 22px;
+    }
+
+    .history-timeline::before {
+      content: '';
+      position: absolute;
+      left: 9px;
+      top: 6px;
+      bottom: 6px;
+      width: 2px;
+      background: var(--panel-line);
+      border-radius: 2px;
+    }
+
+    .hist-entry {
+      position: relative;
+      margin-bottom: 10px;
+      animation: hist-in 0.3s ease;
+    }
+
+    @keyframes hist-in {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .hist-entry::before {
+      content: '';
+      position: absolute;
+      left: -17px;
+      top: 7px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--panel-line);
+      border: 2px solid var(--bg);
+      transition: background 0.2s;
+    }
+
+    .hist-entry.ev-play::before    { background: var(--live); }
+    .hist-entry.ev-pause::before   { background: var(--pending); }
+    .hist-entry.ev-seek::before    { background: #7B8CDE; }
+    .hist-entry.ev-track::before   { background: #C26EF0; }
+    .hist-entry.ev-queue::before   { background: #5FB8E3; }
+    .hist-entry.ev-guest::before   { background: #E3A45F; }
+
+    .hist-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 8px;
+      padding: 8px 11px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .hist-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .hist-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .hist-action {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hist-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .hist-meta .actor-badge {
+      color: var(--live);
+    }
+
+    .hist-meta .actor-badge.cohost {
+      color: var(--pending);
+    }
+
+    .hist-time {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .history-empty {
+      color: var(--text-dim);
+      font-size: 12px;
+      font-family: var(--font-mono);
+      padding: 8px 0;
+    }
   </style>
 </head>
 
@@ -1604,6 +1792,23 @@
       <div class="requests-panel">
         <div class="col-header">Song Requests <span class="badge" id="reqCount">0</span></div>
         <div id="requestsList"></div>
+      </div>
+
+      <!-- Playback History -->
+      <div class="history-section">
+        <button class="history-toggle" id="historyToggle" onclick="toggleHistoryPanel()">
+          🕐 Playback Log <span class="badge" id="historyCount">0</span>
+          <span class="chevron">▾</span>
+        </button>
+        <div class="history-body" id="historyBody">
+          <div class="history-toolbar">
+            <button class="history-btn" id="histExportBtn" onclick="exportHistory()" title="Download log as JSON">⬇ Export JSON</button>
+            <button class="history-btn danger" id="histClearBtn" onclick="clearHistory()" title="Clear log">🗑 Clear</button>
+          </div>
+          <div class="history-timeline" id="historyTimeline">
+            <div class="history-empty" id="historyEmpty">No events recorded yet.</div>
+          </div>
+        </div>
       </div>
     </div>
 
